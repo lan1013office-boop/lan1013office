@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>しごとみえる化マップ - 100件超・現在地対応版</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; display: flex; flex-direction: column; height: 100vh; font-family: 'Helvetica Neue', Arial, sans-serif; background: #f4f4f4; }
+        header { background: #333; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; }
+        #main-container { display: flex; flex: 1; overflow: hidden; }
+        #sidebar { width: 350px; background: #fff; border-right: 1px solid #ddd; overflow-y: auto; display: flex; flex-direction: column; }
+        #map { flex: 1; position: relative; }
+        
+        /* 現在地ボタン */
+        #locate-btn {
+            position: absolute; top: 20px; right: 20px; z-index: 1000;
+            background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 4px;
+            padding: 10px; cursor: pointer; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        #locate-btn:hover { background: #f0f0f0; }
+
+        .section-title { padding: 10px 15px; background: #eee; font-weight: bold; font-size: 14px; }
+        .job-item { padding: 12px 15px; border-bottom: 1px solid #eee; cursor: pointer; transition: 0.2s; }
+        .job-item:hover { background: #eef6ff; }
+        .premium-item { background: #fffdf0; border-left: 5px solid #ffd700; }
+        .job-title { font-weight: bold; font-size: 14px; color: #333; margin-bottom: 3px; }
+        .job-salary { color: #d63384; font-weight: bold; }
+        .job-category { font-size: 10px; background: #ddd; padding: 2px 5px; border-radius: 3px; display: inline-block; margin-bottom: 3px; }
+        .premium-tag { background: #ffd700; font-weight: bold; }
+
+        /* マーカーアニメーション */
+        @keyframes pulse {
+            0% { transform: scale(1) rotate(-45deg); box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7); }
+            70% { transform: scale(1.1) rotate(-45deg); box-shadow: 0 0 0 10px rgba(255, 215, 0, 0); }
+            100% { transform: scale(1) rotate(-45deg); box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
+        }
+        .marker-icon { width: 26px; height: 26px; border-radius: 50% 50% 50% 0; background: #007bff; border: 2px solid white; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; }
+        .marker-inner { transform: rotate(45deg); color: white; font-size: 10px; font-weight: bold; }
+        .marker-premium { background: #ffd700; border: 2px solid #ff8c00; animation: pulse 2s infinite; }
+        .marker-premium .marker-inner { color: #000; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1 style="font-size: 18px; margin:0;">しごとみえる化マップ</h1>
+        <div id="stats" style="font-size: 12px;">求人件数: 読み込み中...</div>
+    </header>
+    <div id="main-container">
+        <div id="sidebar">
+            <div class="section-title">✨ 注目のお宝求人</div>
+            <div id="premium-list"></div>
+            <div class="section-title">📍 求人一覧</div>
+            <div id="regular-list"></div>
+        </div>
+        <div id="map">
+            <button id="locate-btn">現在地を表示</button>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const map = L.map('map').setView([35.6812, 139.7671], 12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        const premiumList = document.getElementById('premium-list');
+        const regularList = document.getElementById('regular-list');
+        const stats = document.getElementById('stats');
+
+        fetch('jobs.json')
+            .then(res => res.json())
+            .then(jobs => {
+                stats.innerText = `掲載中: ${jobs.length} 件`;
+                
+                jobs.forEach(job => {
+                    const isPremium = job.is_premium;
+                    const icon = L.divIcon({
+                        className: 'custom-div-icon',
+                        html: `<div class='marker-icon ${isPremium ? 'marker-premium' : ''}'><div class='marker-inner'>${isPremium ? '★' : '￥'}</div></div>`,
+                        iconSize: [26, 36], iconAnchor: [13, 36]
+                    });
+
+                    const marker = L.marker([job.lat, job.lng], { icon: icon }).addTo(map);
+                    marker.bindPopup(`
+                        <div style="min-width: 150px;">
+                            <b style="color: ${isPremium ? '#ff8c00' : '#007bff'}">${job.title}</b><br>
+                            時給: <b style="color: #d63384">${job.salary_display}</b><br>
+                            ${job.bonus > 0 ? `<div style="background: #ffd700; padding: 2px; margin-top: 5px; text-align: center; border-radius: 4px; font-weight: bold;">🎁 祝い金 ${job.bonus.toLocaleString()}円</div>` : ''}
+                            <hr>
+                            <a href="${job.url}" target="_blank" style="display: block; text-align: center; background: ${isPremium ? '#ff8c00' : '#28a745'}; color: white; padding: 5px; border-radius: 4px; text-decoration: none;">詳細・応募</a>
+                        </div>
+                    `);
+
+                    const item = document.createElement('div');
+                    item.className = `job-item ${isPremium ? 'premium-item' : ''}`;
+                    item.innerHTML = `
+                        <div class="job-category ${isPremium ? 'premium-tag' : ''}">${job.category}</div>
+                        <div class="job-title">${job.title}</div>
+                        <div class="job-salary">${job.salary_display}</div>
+                    `;
+                    item.onclick = () => { map.flyTo([job.lat, job.lng], 15); marker.openPopup(); };
+                    
+                    if (isPremium) premiumList.appendChild(item);
+                    else regularList.appendChild(item);
+                });
+            });
+
+        // 現在地取得機能
+        document.getElementById('locate-btn').onclick = () => {
+            if (!navigator.geolocation) {
+                alert("お使いのブラウザは現在地取得に対応していません。");
+                return;
+            }
+            navigator.geolocation.getCurrentPosition(pos => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                map.flyTo([lat, lng], 15);
+                L.marker([lat, lng]).addTo(map).bindPopup("あなたは今ここにいます").openPopup();
+            }, () => {
+                alert("現在地を取得できませんでした。設定を確認してください。");
+            });
+        };
+    </script>
+</body>
+</html>
